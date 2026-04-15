@@ -45,61 +45,62 @@ Tested on Python 3.11+. Works on Kali Linux, macOS, and Windows WSL.
 
 ## Usage
 
-### Basic scan (same-origin JS files only)
+The scanner has two subcommands: `live` (fetches a target URL) and `har`
+(fully offline -- reads a captured HAR file with zero outbound requests).
+
+### Live mode -- basic scan
 
 ```bash
-python scanner.py https://target.com
+python scanner.py live https://target.com
 ```
 
-### Save findings to a JSON report
+### Live mode -- full options
 
 ```bash
-python scanner.py https://target.com -o findings.json
+python scanner.py live https://target.com --wordlist --delay 1.0 -o report.json
 ```
 
-### Also probe common sensitive paths (/.env, /swagger.json, etc.)
+### HAR mode -- fully passive, zero requests (recommended for authenticated sessions)
 
 ```bash
-python scanner.py https://target.com --wordlist
+# 1. In Chrome/Edge: open DevTools -> Network tab -> browse the target while logged in
+# 2. Right-click any request -> "Copy all as HAR (sanitized)"
+# 3. Paste into a file: network.har
+# 4. Run:
+python scanner.py har network.har -o report.json
 ```
 
-### Include third-party JS files (CDN, analytics, etc.)
+### Include third-party JS (off by default)
 
 ```bash
-python scanner.py https://target.com --all-origins
-```
-
-### Slow down requests (avoid rate limiting)
-
-```bash
-python scanner.py https://target.com --delay 1.5
-```
-
-### Full example
-
-```bash
-python scanner.py https://target.com --wordlist -o report.json --delay 1.0
+python scanner.py live https://target.com --all-origins
+python scanner.py har network.har --all-origins
 ```
 
 ---
 
 ## Output
 
-Findings are printed as a color-coded table sorted by severity:
+Findings are grouped by category and printed as color-coded tables:
+
+| Category | What It Contains |
+|----------|-----------------|
+| Secrets | Regex and entropy matches for credentials, keys, tokens |
+| WordPress Users | Usernames and slugs from the WP REST API |
+| Interesting Comments | Developer comments containing sensitive keywords |
+| Discovered Endpoints | API paths and routes extracted from JS |
+| Tracking IDs | GTM, GA, Facebook Pixel, Sentry DSN, etc. |
+| Header Analysis | Missing security headers and tech fingerprints |
 
 | Severity | Examples |
 |----------|----------|
-| CRITICAL | AWS keys, database connection strings, private keys, JWT tokens, plaintext passwords |
-| HIGH     | GitHub tokens, Slack tokens, Google API keys, Bearer auth headers |
-| MEDIUM   | High entropy strings, generic API key patterns, internal IPs |
+| CRITICAL | AWS keys, DB connection strings, private keys, JWT tokens |
+| HIGH | GitHub tokens, Slack tokens, Google API keys, source maps |
+| MEDIUM | High entropy strings, generic patterns, WP users |
+| LOW | Missing security headers, developer comments |
+| INFO | Endpoints, tracking IDs, fingerprint headers |
 
-A JSON report (when `-o` is used) contains each finding with:
-- `source` -- the URL or label where the secret was found
-- `type` -- the pattern name that matched
-- `match` -- the matched string (truncated to 120 chars)
-- `context` -- surrounding code for manual review
-- `method` -- "regex" or "entropy"
-- `severity` -- CRITICAL / HIGH / MEDIUM
+JSON report fields: `category`, `source`, `type`, `match`, `context`, `method`, `severity`
 
 ---
 
