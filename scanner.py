@@ -593,8 +593,23 @@ def finish(findings: list[dict], output: str | None):
 # Live mode
 # ---------------------------------------------------------------------------
 
+def dump_file(content: str, url: str, dump_dir: str):
+    """Save a fetched file to the dump directory for external tool analysis."""
+    import hashlib, os
+    os.makedirs(dump_dir, exist_ok=True)
+    parsed   = urlparse(url)
+    filename = parsed.path.rstrip("/").split("/")[-1].split("?")[0] or "index"
+    # Avoid collisions with a short hash prefix
+    prefix   = hashlib.md5(url.encode()).hexdigest()[:6]
+    safe     = re.sub(r'[^\w.\-]', '_', filename)
+    path     = os.path.join(dump_dir, f"{prefix}_{safe}")
+    with open(path, "w", errors="replace") as fh:
+        fh.write(content)
+    return path
+
+
 def run_live(target_url: str, output: str | None, delay: float,
-             check_wordlist: bool, same_origin_only: bool):
+             check_wordlist: bool, same_origin_only: bool, dump_dir: str | None = None):
 
     session  = requests.Session()
     findings = []
@@ -603,7 +618,10 @@ def run_live(target_url: str, output: str | None, delay: float,
 
     console.rule("[bold blue]js-secret-scanner[/bold blue]")
     console.print(f"Mode:   [cyan]live[/cyan]")
-    console.print(f"Target: [cyan]{target_url}[/cyan]\n")
+    console.print(f"Target: [cyan]{target_url}[/cyan]")
+    if dump_dir:
+        console.print(f"Dump:   [cyan]{dump_dir}[/cyan]")
+    console.print()
 
     # Fetch homepage
     console.print("[*] Fetching target page...")
@@ -642,6 +660,8 @@ def run_live(target_url: str, output: str | None, delay: float,
             continue
         if url.split("?")[0].endswith(".js"):
             js_urls.append(url)
+        if dump_dir:
+            dump_file(r.text, url, dump_dir)
         findings += process_file(url, r.text, dict(r.headers))
 
     # Source maps
@@ -770,6 +790,8 @@ def main():
                       help="Probe common sensitive paths")
     live.add_argument("--all-origins",   action="store_true",
                       help="Include third-party JS files")
+    live.add_argument("--dump",          default=None, metavar="DIR",
+                      help="Save all fetched files to DIR for external tool analysis")
 
     har = sub.add_parser("har", help="Scan a captured HAR file (fully passive, zero requests)")
     har.add_argument("har_file",         help="Path to .har file")
@@ -786,6 +808,7 @@ def main():
             delay            = args.delay,
             check_wordlist   = args.wordlist,
             same_origin_only = not args.all_origins,
+            dump_dir         = getattr(args, "dump", None),
         )
     elif args.mode == "har":
         run_har(
